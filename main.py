@@ -1,21 +1,15 @@
 import json
-import os
 import sys
 import argparse
 from selenium import webdriver
-from selenium.webdriver.support.select import Select
 from selenium.webdriver.common.by import By
 from selenium.webdriver.firefox.options import Options as FirefoxOptions
-
-options = FirefoxOptions()
-# options.add_argument("--headless")
-driver = webdriver.Firefox(options=options)
-
 
 baseurl = "https://dexscreener.com/"
 chains = {
     1: "ethereum",
     56: "bsc",
+    100: "xdai",
     137: "polygon",
     250: "fantom",
     43114: "avalanche",
@@ -85,6 +79,12 @@ dexes = {
         "PYESwap",
         "BridgesExchange",
         "Mochiswap",
+    ],
+    100: [
+        "Swapr",
+        "HoneySwap",
+        "SushiSwap",
+        "BaoFinance",
     ],
     137: [
         "Uniswap",
@@ -185,18 +185,18 @@ def main():
                         type=int, default=1, help="Chain ID (available: %s)" % str(list(chains.keys())))
     parser.add_argument("--dex",
                         type=str, help="Filter coins for chain by dex")
-    parser.add_argument("-o",
-                        action="store_true", default=False, help="Output to json file")
     parser.add_argument("--org",
                         type=str, help="Organize by %s (Default: txs)" % str(org_types))
     parser.add_argument("--max",
                         type=int, default=100, help="Max amount of pairs to output (Limit is 100)")
     args = parser.parse_args()
 
+    # check args for valid chain
     if args.chain not in chains:
         print("Invalid chain ID")
         sys.exit(1)
 
+    # Check args for dex and organization
     dexs = map(lambda x: x.lower(), dexes[args.chain])
     if args.dex.lower() not in dexs:
         print("Invalid dex name")
@@ -208,12 +208,19 @@ def main():
         print("Available org types: %s" % str(org_types))
         sys.exit(1)
 
+    # Start our headless firefox browser
+    options = FirefoxOptions()
+    options.add_argument("--headless")
+    driver = webdriver.Firefox(options=options)
+
+    # Get the dexscreener.com page
     url = baseurl + chains[args.chain] + "/" + args.dex.lower()
     driver.get(url)
     
     # These are all of the coin pairs on the page
     coins = driver.find_elements(By.CLASS_NAME,"custom-1oo4dn7")
 
+    # using the desired organization type
     org_nav_bar = driver.find_element(By.CLASS_NAME,"custom-1m4s57r")
     buttons = org_nav_bar.find_elements(By.CLASS_NAME, "custom-10m692w")
     # We don't need to click anything for txs bc that's the default
@@ -235,11 +242,12 @@ def main():
     if args.max > 100:
         args.max = 100
 
+    # collect all of the pair divs here
     hrefs = []
     for coin in coins:
         hrefs.append(coin.get_attribute("href"))
+    # loop through every pair link
     for href in hrefs:
-        print("Scraping %s" % href)
         driver.get(href)
 
         price_div = driver.find_element(By.CLASS_NAME,"custom-1obyyr8")
@@ -274,6 +282,7 @@ def main():
         token1_reserve = reserves[0].text
         token2_reserve = reserves[1].text
 
+        # put all of the data into a dictionary
         dexcoin1 = {
             "name": token1_name,
             "chainId": args.chain,
@@ -318,11 +327,11 @@ def main():
             print("Adding pair: %s" % dexpair["pair"])
             dexpairs.append(dexpair)
 
-    if args.o:
-        with open("dexcoins.json", "w") as f:
-            json.dump(dexcoins, f, indent=4)
-        with open("dexpairs.json", "w") as f:
-            json.dump(dexpairs, f, indent=4)
+    
+    with open("dexcoins.json", "w") as f:
+        json.dump(dexcoins, f, indent=4)
+    with open("dexpairs.json", "w") as f:
+        json.dump(dexpairs, f, indent=4)
 
 
 if __name__ == "__main__":
